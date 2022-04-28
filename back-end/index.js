@@ -1,47 +1,82 @@
 import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
 
 import express, { json } from 'express';
 import cors from 'cors';
 
-const mongoClient = new MongoClient("mongodb://localhost:27017");
+const app = express();
+app.use(cors());
+app.use(json());
+dotenv.config();
+
+const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
 
 mongoClient.connect().then(() => {
 	db = mongoClient.db("projeto12-batepapo-uol-api");
 });
 
-const app = express();
-app.use(cors());
-app.use(json());
+app.get('/participants', async (req,res) => {
 
-app.get('/participants', (req,res) => {
-    res.status(200).send([]);
+    try{
+        const participants = await db.collection("participantes").find({}).toArray();
+        res.status(200).send(participants);
+    }catch(error){
+        console.log(error);
+        res.sendStatus(422);
+    }
 });
 
-app.get('/messages', (req,res) => {
-    res.status(200).send([]);
-});
+app.get('/messages', async (req,res) => {
+    const renderLimit = req.query.limit;
 
-app.post('/participants', (req,res) => {
-
-    if(req.headers.name != ""){
-        db.collection("participantes").insertOne(
-            {name: req.headers.name , lastStatus: Date.now()}
-            ).then(() => {
-            res.sendStatus(201);
-        });   
-    }else{
-        res.sendStatus(422);    
+    try {
+        const getAllMessages = await db.collection("mensagens").find({}).toArray(); 
+        res.status(200).send(getAllMessages.slice(0,renderLimit));
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(422);
     };
     
 });
 
-app.post('/status', (req,res) => {
+app.post('/participants', async (req,res) => {
 
+    try {
+        const sendUser = await db.collection("participantes").insertOne( { name: req.body.name , lastStatus: Date.now() } );
+        res.sendStatus(201);
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(422);
+    };
 });
 
-app.post('/messages', (req,res) => {
+app.post('/status', async (req,res) => {
+   const username = req.headers.user;
+    try {
+        const searchUsername = await db.collection("participantes").findOne({ name: username });
+        if (!!searchUsername){
+            db.collection("participantes").updateOne({ name: username },{$set: { lastStatus: Date.now() }});
+            console.log("Status atualizado");
+        };
+    }catch (error) {
+       console.log(error);
+       res.sendStatus(404);
+   }
+});
 
+app.post('/messages', async (req,res) => {
+    const { to, text, type } = req.body;
+    const from  = req.headers.user; 
+
+    try {
+        const sendMessage = await db.collection("mensagens").insertOne( { from: from , to: to , text: text , type: type } );
+        console.log(sendMessage);
+        res.sendStatus(201);
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(422);
+    };
 });
 
 app.listen(5000);
