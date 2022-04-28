@@ -56,8 +56,8 @@ app.post('/status', async (req,res) => {
     try {
         const searchUsername = await db.collection("participantes").findOne({ name: username });
         if (!!searchUsername){
-            db.collection("participantes").updateOne({ name: username },{$set: { lastStatus: Date.now() }});
-            console.log("Status atualizado");
+            await db.collection("participantes").updateOne({ name: username },{$set: { lastStatus: Date.now() }});
+            res.send('Ok');
         };
     }catch (error) {
        console.log(error);
