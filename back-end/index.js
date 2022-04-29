@@ -16,6 +16,21 @@ mongoClient.connect().then(() => {
 	db = mongoClient.db("projeto12-batepapo-uol-api");
 });
 
+setInterval(inativeParticipants,15000);
+
+async function inativeParticipants(){
+    const inativeParticipants = await db.collection("participantes").find( { lastStatus: { $lte: (Date.now()-10000) } } ).toArray();
+    console.log(inativeParticipants);
+    try {
+        inativeParticipants.forEach(participant => {
+            db.collection("participantes").deleteOne({ _id: participant._id });
+            db.collection("mensagens").insertOne({ from: participant.from , to: 'Todos' , text: "sai da saka..." , type: 'status' });
+        });
+    } catch (error) {
+        console.log(error);
+    };
+};
+
 app.get('/participants', async (req,res) => {
 
     try{
@@ -54,10 +69,11 @@ app.post('/participants', async (req,res) => {
 app.post('/status', async (req,res) => {
    const username = req.headers.user;
     try {
-        const searchUsername = await db.collection("participantes").findOne({ name: username });
+        const searchUsername = await db.collection("participantes").find({ name: username }).toArray();
         if (!!searchUsername){
             await db.collection("participantes").updateOne({ name: username },{$set: { lastStatus: Date.now() }});
-            res.send('Ok');
+            console.log(searchUsername);
+            res.sendStatus(200);
         };
     }catch (error) {
        console.log(error);
@@ -79,4 +95,4 @@ app.post('/messages', async (req,res) => {
     };
 });
 
-app.listen(5000);
+app.listen(5000, () => {console.log("Servidor iniciado")} );
