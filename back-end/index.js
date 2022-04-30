@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 
 import express, { json } from 'express';
 import cors from 'cors';
+import joi from 'joi';
 
 const app = express();
 app.use(cors());
@@ -11,20 +12,28 @@ dotenv.config();
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
-
-mongoClient.connect().then(() => {
+const serverPromise = mongoClient.connect();
+serverPromise.then(() => {
 	db = mongoClient.db("projeto12-batepapo-uol-api");
+});
+serverPromise.catch(error => console.log("error during connection to mongodb", error));
+
+const messageSchema = joi.object({
+    from: joi.string().required(),
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().required(),
+    time: joi.string().required()
 });
 
 setInterval(inativeParticipants,15000);
 
 async function inativeParticipants(){
     const inativeParticipants = await db.collection("participantes").find( { lastStatus: { $lte: (Date.now()-10000) } } ).toArray();
-    console.log(inativeParticipants);
     try {
         inativeParticipants.forEach(participant => {
             db.collection("participantes").deleteOne({ _id: participant._id });
-            db.collection("mensagens").insertOne({ from: participant.from , to: 'Todos' , text: "sai da saka..." , type: 'status' });
+            db.collection("mensagens").insertOne({ from: participant.name , to: 'Todos' , text: "sai da sala..." , type: 'status' , time: new Date().toLocaleTimeString() });
         });
     } catch (error) {
         console.log(error);
@@ -44,10 +53,14 @@ app.get('/participants', async (req,res) => {
 
 app.get('/messages', async (req,res) => {
     const renderLimit = req.query.limit;
+    const username = req.headers.user;
+    const AllMessages = await db.collection("mensagens").find({}).toArray(); 
 
+    let filteredMessages = AllMessages.filter( message =>(message.from === username || message.to === username || message.type === 'message'));
+    
     try {
-        const getAllMessages = await db.collection("mensagens").find({}).toArray(); 
-        res.status(200).send(getAllMessages.slice(0,renderLimit));
+        
+        res.status(200).send(filteredMessages.slice(-renderLimit));
     } catch (error) {
         console.log(error);
         res.sendStatus(422);
@@ -72,7 +85,6 @@ app.post('/status', async (req,res) => {
         const searchUsername = await db.collection("participantes").find({ name: username }).toArray();
         if (!!searchUsername){
             await db.collection("participantes").updateOne({ name: username },{$set: { lastStatus: Date.now() }});
-            console.log(searchUsername);
             res.sendStatus(200);
         };
     }catch (error) {
@@ -85,8 +97,18 @@ app.post('/messages', async (req,res) => {
     const { to, text, type } = req.body;
     const from  = req.headers.user; 
 
+    let message = { from, to, text, type, time: new Date().toLocaleTimeString()};
+    let participants = await db.collection("participantes").find({}).toArray();
+    let checkParticipant = participants.some( participant => participant.name === message.from )
+
+    const validation = messageSchema.validate(message,{ abortEarly: true });
+    if (validation.error || checkParticipant === false) {
+        res.sendStatus(422);
+        console.log(validation);
+    };
+
     try {
-        const sendMessage = await db.collection("mensagens").insertOne( { from: from , to: to , text: text , type: type } );
+        const sendMessage = await db.collection("mensagens").insertOne( message );
         console.log(sendMessage);
         res.sendStatus(201);
     } catch (error) {
