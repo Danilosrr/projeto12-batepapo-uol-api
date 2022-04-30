@@ -26,6 +26,11 @@ const messageSchema = joi.object({
     time: joi.string().required()
 });
 
+const participantSchema = joi.object({
+    name: joi.string().required(),
+    lastStatus: joi.number().required()
+});
+
 setInterval(inativeParticipants,15000);
 
 async function inativeParticipants(){
@@ -69,18 +74,32 @@ app.get('/messages', async (req,res) => {
 });
 
 app.post('/participants', async (req,res) => {
+    const participant = { name: req.body.name , lastStatus: Date.now() };
 
-    try {
-        const sendUser = await db.collection("participantes").insertOne( { name: req.body.name , lastStatus: Date.now() } );
-        res.sendStatus(201);
-    } catch (error) {
-        console.log(error);
+    let participants = await db.collection("participantes").find({}).toArray();
+    let checkUsername = participants.some( user => participant.name === user.name );
+
+    const validation = participantSchema.validate(participant,{ abortEarly: false });
+
+    if (validation.error) {
         res.sendStatus(422);
+    }else if(checkUsername){
+        res.sendStatus(409);
+    }else{
+
+        try {
+            const sendUser = await db.collection("participantes").insertOne( { name: req.body.name , lastStatus: Date.now() } );
+            res.sendStatus(201);
+        } catch (error) {
+            console.log(error);
+            res.sendStatus(422);
+        };        
     };
 });
 
 app.post('/status', async (req,res) => {
    const username = req.headers.user;
+
     try {
         const searchUsername = await db.collection("participantes").find({ name: username }).toArray();
         if (!!searchUsername){
@@ -99,21 +118,23 @@ app.post('/messages', async (req,res) => {
 
     let message = { from, to, text, type, time: new Date().toLocaleTimeString()};
     let participants = await db.collection("participantes").find({}).toArray();
-    let checkParticipant = participants.some( participant => participant.name === message.from )
+    let checkFrom = participants.some( participant => participant.name === message.from )
 
-    const validation = messageSchema.validate(message,{ abortEarly: true });
-    if (validation.error || checkParticipant === false) {
+    const validation = messageSchema.validate(message,{ abortEarly: false });
+    
+    if (validation.error || checkFrom === false) {
         res.sendStatus(422);
         console.log(validation);
-    };
+    }else{
 
-    try {
-        const sendMessage = await db.collection("mensagens").insertOne( message );
-        console.log(sendMessage);
-        res.sendStatus(201);
-    } catch (error) {
-        console.log(error);
-        res.sendStatus(422);
+        try {
+            const sendMessage = await db.collection("mensagens").insertOne( message );
+            console.log(sendMessage);
+            res.sendStatus(201);
+        } catch (error) {
+            console.log(error);
+            res.sendStatus(422);
+        };        
     };
 });
 
