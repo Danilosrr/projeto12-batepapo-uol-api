@@ -89,6 +89,7 @@ app.post('/participants', async (req,res) => {
 
         try {
             const sendUser = await db.collection("participantes").insertOne( { name: req.body.name , lastStatus: Date.now() } );
+            db.collection("mensagens").insertOne({ from: participant.name , to: 'Todos' , text: "entra na sala..." , type: 'status' , time: new Date().toLocaleTimeString() });
             res.sendStatus(201);
         } catch (error) {
             console.log(error);
