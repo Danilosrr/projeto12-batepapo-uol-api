@@ -1,4 +1,4 @@
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 
 import express, { json } from 'express';
@@ -29,6 +29,13 @@ const messageSchema = joi.object({
 const participantSchema = joi.object({
     name: joi.string().required(),
     lastStatus: joi.number().required()
+});
+
+const messageEditSchema = joi.object({
+    from: joi.string().required(),
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().required()
 });
 
 setInterval(inativeParticipants,15000);
@@ -136,6 +143,54 @@ app.post('/messages', async (req,res) => {
             console.log(error);
             res.sendStatus(422);
         };        
+    };
+});
+
+app.delete('/messages/:messageId', async (req, res) => {
+    const messageId = req.params.messageId;
+    const from = req.headers.user;
+    
+    let messageToDelete = await db.collection("mensagens").findOne({ _id: new ObjectId(messageId) });
+
+    if(messageToDelete.from !== from){
+        res.sendStatus(401);
+    }else{
+        try {
+            await db.collection("mensagens").deleteOne({ _id: ObjectId(messageId) }); 
+            res.sendStatus(200);
+        } catch (error) {
+            res.sendStatus(404);
+        };
+    };
+});
+
+app.put('/messages/:messageId', async (req, res) => {
+    const messageId = req.params.messageId;
+    const {to, text, type } = req.body;
+    const from = req.headers.user;
+
+    const message = { from, to, text, type };
+    
+    let checkType = (message.type == 'message' || message.type == 'private_message');
+
+    let participants = await db.collection("participantes").find({}).toArray();
+    let checkUsername = participants.some( user => message.from === user.name );
+
+    let messageToEdit = await db.collection("mensagens").findOne({ _id: new ObjectId(messageId) });
+
+    const validation = messageEditSchema.validate(message,{ abortEarly: false });
+
+    if (validation.error || !checkUsername || !checkType) {
+        res.sendStatus(422);
+    }else if(messageToEdit.from !== from){
+        res.sendStatus(401);
+    }else{
+        try {
+            await db.collection("mensagens").updateOne({ _id: new ObjectId(messageId) },{$set: { text: text }}); 
+            res.sendStatus(200);
+        } catch (error) {
+            res.sendStatus(404);
+        };
     };
 });
 
